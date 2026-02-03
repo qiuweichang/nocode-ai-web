@@ -31,3 +31,12 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Frontend dependencies and builds
+ai-app-generate-frontend/node_modules/
+ai-app-generate-frontend/dist/
+ai-app-generate-frontend/ai-app-generate-frontend/node_modules/
+ai-app-generate-frontend/ai-app-generate-frontend/dist/
+ai-app-generate-frontend/ai-app-generate-frontend/dist-ssr/
+ai-app-generate-frontend/ai-app-generate-frontend/coverage/
+
