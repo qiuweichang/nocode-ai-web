@@ -38,3 +38,9 @@ ai-app-generate-frontend/dist/
 ai-app-generate-frontend/dist-ssr/
 ai-app-generate-frontend/coverage/
 
+### CUSTOM ###
+application-local.yml
+
+/tmp/
+
+

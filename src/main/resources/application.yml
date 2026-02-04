@@ -3,6 +3,8 @@ server:
   servlet:
     context-path: /api
 spring:
+  profiles:
+    active: local
   application:
     name: ai-app-generate
   # mysql
