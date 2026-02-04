@@ -1,6 +1,6 @@
 <template>
   <div class="global-footer">
-    <div>项目 by qiuwc（963906940@qq.com）</div>
+    <div>by qiuwc（963906940@qq.com）</div>
   </div>
 </template>
 

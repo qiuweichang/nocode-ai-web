@@ -39,10 +39,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (StrUtil.hasBlank(userAccount, userPassword, checkPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
         }
-        if (userAccount.length() < 4) {
+        if (userAccount.length() < 3) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号长度过短");
         }
-        if (userPassword.length() < 8 || checkPassword.length() < 8) {
+        if (userPassword.length() < 6 || checkPassword.length() < 6) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "密码长度过短");
         }
         if (!userPassword.equals(checkPassword)) {
@@ -86,10 +86,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (StrUtil.hasBlank(userAccount, userPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
         }
-        if (userAccount.length() < 4) {
+        if (userAccount.length() < 3) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号长度过短");
         }
-        if (userPassword.length() < 8) {
+        if (userPassword.length() < 6) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "密码长度过短");
         }
         // 2. 加密
