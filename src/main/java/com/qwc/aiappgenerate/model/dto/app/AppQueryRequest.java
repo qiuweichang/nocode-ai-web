@@ -1,17 +1,16 @@
-package com.qwc.aiappgenerate.model.vo;
+package com.qwc.aiappgenerate.model.dto.app;
 
-import cn.hutool.core.bean.BeanUtil;
-import com.qwc.aiappgenerate.model.entity.App;
+import com.qwc.aiappgenerate.common.PageRequest;
 import lombok.Data;
-
+import lombok.EqualsAndHashCode;
 import java.io.Serializable;
-import java.time.LocalDateTime;
 
 /**
- * 应用 VO
+ * 查询应用请求
  */
+@EqualsAndHashCode(callSuper = true)
 @Data
-public class AppVO implements Serializable {
+public class AppQueryRequest extends PageRequest implements Serializable {
 
     /**
      * id
@@ -44,11 +43,6 @@ public class AppVO implements Serializable {
     private String deployKey;
 
     /**
-     * 部署时间
-     */
-    private LocalDateTime deployedTime;
-
-    /**
      * 优先级
      */
     private Integer priority;
@@ -57,21 +51,6 @@ public class AppVO implements Serializable {
      * 创建用户id
      */
     private Long userId;
-
-    /**
-     * 创建时间
-     */
-    private LocalDateTime createTime;
-
-    /**
-     * 更新时间
-     */
-    private LocalDateTime updateTime;
-
-    /**
-     * 创建用户信息
-     */
-    private UserVO user;
 
     private static final long serialVersionUID = 1L;
 }
