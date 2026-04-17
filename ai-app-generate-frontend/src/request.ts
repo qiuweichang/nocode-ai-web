@@ -1,9 +1,10 @@
 import axios from 'axios'
 import { message } from 'ant-design-vue'
+import { apiBaseUrl } from '@/config/appConfig'
 
 // 创建 Axios 实例
 const myAxios = axios.create({
-  baseURL: 'http://localhost:8123/api',
+  baseURL: apiBaseUrl,
   timeout: 60000,
   withCredentials: true,
 })

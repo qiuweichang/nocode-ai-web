@@ -13,6 +13,12 @@ spring:
     url: jdbc:mysql://localhost:3306/yu_ai_code_mother
     username: root
     password: qwc123
+  data:
+    redis:
+      host: 192.168.96.136
+      port: 32539
+      database: 1
+      password: bywin@666
 
 # springdoc-openapi
 springdoc:
