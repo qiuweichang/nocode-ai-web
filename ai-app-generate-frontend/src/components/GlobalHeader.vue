@@ -1,155 +1,198 @@
 <template>
-  <a-layout-header class="header">
-    <a-row :wrap="false">
-      <!-- 左侧：Logo和标题 -->
-      <a-col flex="250px">
-        <RouterLink to="/">
-          <div class="header-left">
-            <img class="logo" src="@/assets/logo.png" alt="Logo" />
-            <h1 class="site-title">NoCode-AiWeb</h1>
-          </div>
-        </RouterLink>
-      </a-col>
-      <!-- 中间：导航菜单 -->
-      <a-col flex="auto">
-        <a-menu
-          v-model:selectedKeys="selectedKeys"
-          mode="horizontal"
-          :items="menuItems"
-          @click="handleMenuClick"
-        />
-      </a-col>
-      <!-- 右侧：用户操作区域 -->
-      <a-col>
-        <div class="user-login-status">
-          <div v-if="loginUserStore.loginUser.id">
-            <a-dropdown>
-              <a-space>
-                <a-avatar :src="loginUserStore.loginUser.userAvatar" />
-                {{ loginUserStore.loginUser.userName ?? '无名' }}
-              </a-space>
-              <template #overlay>
-                <a-menu>
-                  <a-menu-item @click="doLogout">
-                    <LogoutOutlined />
-                    退出登录
-                  </a-menu-item>
-                </a-menu>
-              </template>
-            </a-dropdown>
-          </div>
-          <div v-else>
-            <a-button type="primary" href="/user/login">登录</a-button>
-          </div>
-        </div>
-      </a-col>
-    </a-row>
-  </a-layout-header>
+  <header class="global-header">
+    <RouterLink class="brand" to="/" aria-label="返回首页">
+      <img class="brand-logo" :src="logo" alt="NoCode" />
+      <span>NoCode</span>
+    </RouterLink>
+
+    <nav class="main-nav" aria-label="主导航">
+      <button :class="{ active: route.path === '/' }" @click="goHome">首页</button>
+      <button @click="scrollToSection('my-work')">我的作品</button>
+      <button @click="scrollToSection('showcase')">精选案例</button>
+      <a-dropdown v-if="isAdmin">
+        <button class="admin-trigger">管理后台 <DownOutlined /></button>
+        <template #overlay>
+          <a-menu @click="handleAdminMenuClick">
+            <a-menu-item key="/admin/userManage">用户管理</a-menu-item>
+            <a-menu-item key="/admin/appManage">应用管理</a-menu-item>
+            <a-menu-item key="/admin/chatManage">对话管理</a-menu-item>
+          </a-menu>
+        </template>
+      </a-dropdown>
+    </nav>
+
+    <div class="account-area">
+      <a-dropdown v-if="loginUserStore.loginUser.id" placement="bottomRight">
+        <button class="account-button">
+          <a-avatar :size="32" :src="loginUserStore.loginUser.userAvatar">
+            {{ (loginUserStore.loginUser.userName || '用').slice(0, 1) }}
+          </a-avatar>
+          <span>{{ loginUserStore.loginUser.userName || '用户' }}</span>
+          <DownOutlined />
+        </button>
+        <template #overlay>
+          <a-menu>
+            <a-menu-item key="logout" @click="doLogout">
+              <LogoutOutlined />
+              退出登录
+            </a-menu-item>
+          </a-menu>
+        </template>
+      </a-dropdown>
+      <RouterLink v-else class="login-button" to="/user/login">登录 / 注册</RouterLink>
+    </div>
+  </header>
 </template>
 
 <script setup lang="ts">
-import { computed, h, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { type MenuProps, message } from 'ant-design-vue'
-import { useLoginUserStore } from '@/stores/loginUser.ts'
-import { userLogout } from '@/api/userController.ts'
-import { LogoutOutlined, HomeOutlined } from '@ant-design/icons-vue'
+import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { message, type MenuProps } from 'ant-design-vue'
+import { DownOutlined, LogoutOutlined } from '@ant-design/icons-vue'
+import { useLoginUserStore } from '@/stores/loginUser'
+import { userLogout } from '@/api/userController'
+import logo from '@/assets/logo.png'
 
-const loginUserStore = useLoginUserStore()
+const route = useRoute()
 const router = useRouter()
-// 当前选中菜单
-const selectedKeys = ref<string[]>(['/'])
-// 监听路由变化，更新当前选中菜单
-router.afterEach((to, from, next) => {
-  selectedKeys.value = [to.path]
-})
+const loginUserStore = useLoginUserStore()
+const isAdmin = computed(() => loginUserStore.loginUser.userRole === 'admin')
 
-// 菜单配置项
-const originItems = [
-  {
-    key: '/',
-    icon: () => h(HomeOutlined),
-    label: '主页',
-    title: '主页',
-  },
-  {
-    key: '/admin/userManage',
-    label: '用户管理',
-    title: '用户管理',
-  },
-  {
-    key: '/admin/appManage',
-    label: '应用管理',
-    title: '应用管理',
-  },
-]
-
-// 过滤菜单项
-const filterMenus = (menus = [] as MenuProps['items']) => {
-  return menus?.filter((menu) => {
-    const menuKey = menu?.key as string
-    if (menuKey?.startsWith('/admin')) {
-      const loginUser = loginUserStore.loginUser
-      if (!loginUser || loginUser.userRole !== 'admin') {
-        return false
-      }
-    }
-    return true
-  })
-}
-
-// 展示在菜单的路由数组
-const menuItems = computed<MenuProps['items']>(() => filterMenus(originItems))
-
-// 处理菜单点击
-const handleMenuClick: MenuProps['onClick'] = (e) => {
-  const key = e.key as string
-  selectedKeys.value = [key]
-  // 跳转到对应页面
-  if (key.startsWith('/')) {
-    router.push(key)
+/** 返回首页；已经在首页时保持当前位置，避免无意义的整页刷新。 */
+const goHome = () => {
+  if (route.path !== '/') {
+    void router.push('/')
   }
 }
 
-// 退出登录
+/**
+ * 滚动到首页目标区块；从其他页面触发时先回首页，再等待视图完成挂载。
+ *
+ * @param sectionId 首页区块 DOM id
+ */
+const scrollToSection = async (sectionId: string) => {
+  if (route.path !== '/') {
+    await router.push('/')
+    window.setTimeout(() => document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' }), 80)
+    return
+  }
+  document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' })
+}
+
+/** 从管理员下拉菜单跳转到选中的管理页面。 */
+const handleAdminMenuClick: MenuProps['onClick'] = ({ key }) => {
+  void router.push(String(key))
+}
+
+/** 注销当前会话并回到公开首页。 */
 const doLogout = async () => {
-  const res = await userLogout()
-  if (res.data.code === 0) {
-    loginUserStore.setLoginUser({
-      userName: '未登录',
-    })
-    message.success('退出登录成功')
-    await router.push('/user/login')
-  } else {
-    message.error('退出登录失败，' + res.data.message)
+  try {
+    const response = await userLogout()
+    if (response.data.code !== 0) {
+      message.error('退出登录失败，' + response.data.message)
+      return
+    }
+    loginUserStore.setLoginUser({ userName: '未登录' })
+    message.success('已退出登录')
+    await router.push('/')
+  } catch {
+    message.error('退出登录失败')
   }
 }
 </script>
 
 <style scoped>
-.header {
-  background: #fff;
-  padding: 0 24px;
+.global-header {
+  position: relative;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  min-height: 72px;
+  padding: 0 28px;
+  border-bottom: 1px solid rgba(17, 24, 39, 0.08);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(18px);
 }
 
-.header-left {
+.brand {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 10px;
+  color: #111827;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.brand-logo {
+  width: 38px;
+  height: 38px;
+  border-radius: 13px;
+  object-fit: cover;
+}
+
+.main-nav {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
-.logo {
-  height: 48px;
-  width: 48px;
+.main-nav button,
+.account-button {
+  border: none;
+  background: transparent;
+  color: #5f6673;
+  cursor: pointer;
+  font: inherit;
 }
 
-.site-title {
-  margin: 0;
-  font-size: 18px;
-  color: #1890ff;
+.main-nav button {
+  padding: 10px 15px;
+  border-radius: 12px;
+  font-size: 14px;
+  transition: color 0.2s ease, background 0.2s ease;
 }
 
-.ant-menu-horizontal {
-  border-bottom: none !important;
+.main-nav button:hover,
+.main-nav button.active {
+  color: #111827;
+  background: #f5f6f7;
 }
+
+.admin-trigger :deep(svg) {
+  width: 10px;
+}
+
+.account-area {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.account-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px 5px 5px;
+  border-radius: 14px;
+}
+
+.account-button:hover {
+  background: #f5f6f7;
+}
+
+.login-button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  padding: 0 18px;
+  border-radius: 12px;
+  background: #146ff4;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 8px 20px rgba(20, 111, 244, 0.2);
+}
+
 </style>

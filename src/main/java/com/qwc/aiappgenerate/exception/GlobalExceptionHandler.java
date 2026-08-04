@@ -35,7 +35,7 @@ public class GlobalExceptionHandler {
     public BaseResponse<?> runtimeExceptionHandler(RuntimeException e) {
         log.error("RuntimeException", e);
         // 尝试处理 SSE 请求
-        if (handleSseError(ErrorCode.SYSTEM_ERROR.getCode(), "系统错误")) {
+        if (handleSseError(ErrorCode.SYSTEM_ERROR.getCode(), buildRuntimeSseMessage(e))) {
             return null;
         }
         return ResultUtils.error(ErrorCode.SYSTEM_ERROR, "系统错误");
@@ -89,5 +89,20 @@ public class GlobalExceptionHandler {
             }
         }
         return false;
+    }
+
+    /**
+     * 构建用于 SSE 响应的运行时异常消息。
+     * SSE 场景下前端需要展示明确失败原因，因此优先返回异常本身的可读消息，
+     * 仅在消息为空时兜底为统一文案。
+     *
+     * @param e 运行时异常
+     * @return 可直接返回给前端展示的异常消息
+     */
+    private String buildRuntimeSseMessage(RuntimeException e) {
+        if (e == null || e.getMessage() == null || e.getMessage().isBlank()) {
+            return "系统错误";
+        }
+        return e.getMessage();
     }
 }

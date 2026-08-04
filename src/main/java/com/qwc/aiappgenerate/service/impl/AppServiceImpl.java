@@ -11,6 +11,7 @@ import com.mybatisflex.spring.service.impl.ServiceImpl;
 import com.qwc.aiappgenerate.ai.AiCodeGeneratorService;
 import com.qwc.aiappgenerate.constant.AppConstant;
 import com.qwc.aiappgenerate.core.AiCodeGeneratorFacade;
+import com.qwc.aiappgenerate.core.handler.StreamHandlerExecutor;
 import com.qwc.aiappgenerate.exception.BusinessException;
 import com.qwc.aiappgenerate.exception.ErrorCode;
 import com.qwc.aiappgenerate.exception.ThrowUtils;
@@ -55,6 +56,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private ChatHistoryService chatHistoryService;
+
+    @Resource
+    private StreamHandlerExecutor streamHandlerExecutor;
 
     @Override
     public void validApp(App app, boolean add) {
@@ -131,9 +135,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         Map<Long, UserVO> userVOMap = userService.listByIds(userIds).stream()
                 .collect(Collectors.toMap(User::getId, userService::getUserVO));
         return appList.stream().map(app -> {
-            AppVO appVO = getAppVO(app);
-            UserVO userVO = userVOMap.get(app.getUserId());
-            appVO.setUser(userVO);
+            AppVO appVO = new AppVO();
+            BeanUtil.copyProperties(app, appVO);
+            appVO.setUser(userVOMap.get(app.getUserId()));
             return appVO;
         }).collect(Collectors.toList());
     }
@@ -146,6 +150,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 2. 查询应用信息
         App app = this.getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        // 兼容早期没有保存生成类型的应用，避免覆盖已经明确选择的生成类型。
+        if (StrUtil.isBlank(app.getCodeGenType())) {
+            app.setCodeGenType(CodeGenTypeEnum.MULTI_FILE.getValue());
+        }
         // 3. 验证用户是否有权限访问该应用，仅本人可以生成代码
         if (!app.getUserId().equals(loginUser.getId())) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限访问该应用");
@@ -159,27 +167,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 5. 通过校验后，添加用户消息到对话历史
         chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(), loginUser.getId());
         // 6. 调用 AI 生成代码（流式）
-        Flux<String> contentFlux = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
-        // 7. 收集AI响应内容并在完成后记录到对话历史
-        StringBuilder aiResponseBuilder = new StringBuilder();
-        return contentFlux
-                .map(chunk -> {
-                    // 收集AI响应内容
-                    aiResponseBuilder.append(chunk);
-                    return chunk;
-                })
-                .doOnComplete(() -> {
-                    // 流式响应完成后，添加AI消息到对话历史
-                    String aiResponse = aiResponseBuilder.toString();
-                    if (StrUtil.isNotBlank(aiResponse)) {
-                        chatHistoryService.addChatMessage(appId, aiResponse, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
-                    }
-                })
-                .doOnError(error -> {
-                    // 如果AI回复失败，也要记录错误消息
-                    String errorMessage = "AI回复失败: " + error.getMessage();
-                    chatHistoryService.addChatMessage(appId, errorMessage, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
-                });
+        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+        // 7. 收集 AI 响应内容并在完成后记录到对话历史
+        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
     }
 
 

@@ -13,9 +13,13 @@ router.beforeEach(async (to, from, next) => {
   let loginUser = loginUserStore.loginUser
   // 确保页面刷新，首次加载时，能够等后端返回用户信息后再校验权限
   if (firstFetchLoginUser) {
-    await loginUserStore.fetchLoginUser()
-    loginUser = loginUserStore.loginUser
-    firstFetchLoginUser = false
+    try {
+      await loginUserStore.fetchLoginUser()
+      loginUser = loginUserStore.loginUser
+    } finally {
+      // 无论接口是否可用都结束首次探测，避免公开路由被网络异常永久卡住。
+      firstFetchLoginUser = false
+    }
   }
   const toUrl = to.fullPath
   if (toUrl.startsWith('/admin')) {

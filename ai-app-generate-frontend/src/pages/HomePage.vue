@@ -6,27 +6,34 @@
       <div class="hero-orb orb-bottom"></div>
 
       <div class="hero-inner">
-        <div class="hero-title">
+        <h1 class="hero-title">
           <span>一句话</span>
           <img :src="logo" alt="NoCode Logo" class="hero-logo" />
           <span>呈所想</span>
-        </div>
+        </h1>
         <p class="hero-subtitle">与 AI 对话轻松创建应用和网站</p>
 
         <div class="prompt-card">
           <a-textarea
             v-model:value="userPrompt"
-            placeholder="使用 NoCode 创建一个高效的小工具，帮我计算……"
+            placeholder="描述你的应用创意，AI 将为你生成完整网站……"
             :auto-size="{ minRows: 6, maxRows: 8 }"
             class="prompt-textarea"
           />
 
           <div class="prompt-footer">
             <div class="prompt-tools">
-              <a-button class="ghost-pill" @click="fillExamplePrompt">
+              <a-button class="ghost-pill" @click="openFilePicker">
                 <PaperClipOutlined />
                 上传
               </a-button>
+              <input
+                ref="promptFileInput"
+                class="visually-hidden"
+                type="file"
+                accept=".txt,.md,.json,.html,.css,.js,.ts,.vue,text/plain,application/json"
+                @change="handlePromptFileChange"
+              />
               <a-button class="ghost-pill" @click="handleOptimizePrompt">
                 <BgColorsOutlined />
                 优化
@@ -57,7 +64,7 @@
       </div>
     </section>
 
-    <section class="showcase-section">
+    <section id="my-work" class="showcase-section">
       <div class="showcase-panel">
         <div class="section-block">
           <div class="section-header">
@@ -75,7 +82,12 @@
               @click="handleGoToChat(item.id)"
             >
               <div class="card-preview" :class="`variant-${index % 3}`">
-                <img v-if="item.cover" :src="item.cover" :alt="item.appName" class="preview-image" />
+                <img
+                  v-if="item.cover"
+                  :src="item.cover"
+                  :alt="item.appName"
+                  class="preview-image"
+                />
                 <div v-else class="preview-fallback">
                   <div class="fallback-window">
                     <div class="window-bar">
@@ -111,10 +123,17 @@
                     继续
                     <ArrowRightOutlined />
                   </a-button>
-                  <a-button type="text" danger @click="handleDeleteMyApp(item.id)">
-                    <DeleteOutlined />
-                    删除
-                  </a-button>
+                  <a-popconfirm
+                    title="确定删除这个应用吗？"
+                    ok-text="删除"
+                    cancel-text="取消"
+                    @confirm="handleDeleteMyApp(item.id)"
+                  >
+                    <a-button type="text" danger>
+                      <DeleteOutlined />
+                      删除
+                    </a-button>
+                  </a-popconfirm>
                 </div>
               </div>
             </article>
@@ -126,7 +145,10 @@
             class="section-empty"
           />
 
-          <div class="pagination-wrapper" v-if="hasLogin && myAppsTotal > (myAppParams.pageSize ?? 10)">
+          <div
+            class="pagination-wrapper"
+            v-if="hasLogin && myAppsTotal > (myAppParams.pageSize ?? 10)"
+          >
             <a-pagination
               v-model:current="myAppParams.pageNum"
               v-model:pageSize="myAppParams.pageSize"
@@ -137,7 +159,7 @@
           </div>
         </div>
 
-        <div class="section-block">
+        <div id="showcase" class="section-block">
           <div class="section-header">
             <div>
               <h2>精选案例</h2>
@@ -153,7 +175,12 @@
               @click="handleViewFeatured(item.id)"
             >
               <div class="card-preview" :class="`featured-${index % 3}`">
-                <img v-if="item.cover" :src="item.cover" :alt="item.appName" class="preview-image" />
+                <img
+                  v-if="item.cover"
+                  :src="item.cover"
+                  :alt="item.appName"
+                  class="preview-image"
+                />
                 <div v-else class="preview-fallback featured-fallback">
                   <div class="featured-surface">
                     <div class="featured-topbar"></div>
@@ -182,7 +209,10 @@
             </article>
           </div>
 
-          <div class="pagination-wrapper" v-if="featuredAppsTotal > (featuredAppParams.pageSize ?? 10)">
+          <div
+            class="pagination-wrapper"
+            v-if="featuredAppsTotal > (featuredAppParams.pageSize ?? 10)"
+          >
             <a-pagination
               v-model:current="featuredAppParams.pageNum"
               v-model:pageSize="featuredAppParams.pageSize"
@@ -194,6 +224,14 @@
         </div>
       </div>
     </section>
+
+    <AppDetailModal
+      v-model:open="featuredDetailVisible"
+      :app="selectedFeaturedApp"
+      :editable="selectedFeaturedEditable"
+      @edit="openSelectedFeaturedWorkspace"
+      @visit="visitSelectedFeaturedApp"
+    />
   </div>
 </template>
 
@@ -218,22 +256,23 @@ import {
 import { useLoginUserStore } from '@/stores/loginUser'
 import logo from '@/assets/logo.png'
 import dayjs from 'dayjs'
+import { isSameId } from '@/utils/id'
+import { buildDeployAppUrl } from '@/config/appConfig'
+import AppDetailModal from '@/components/AppDetailModal.vue'
 
 const router = useRouter()
 const loginUserStore = useLoginUserStore()
 
-const promptSuggestions = [
-  '波普风电商页面',
-  '企业网站',
-  '电商运营后台',
-  '暗黑话题社区',
-]
+const promptSuggestions = ['波普风电商页面', '企业网站', '电商运营后台', '暗黑话题社区']
 
 const featuredTagLabels = ['用户应用', '网站', '工具']
 const featuredTagColors = ['purple', 'blue', 'gold']
 
 const userPrompt = ref('')
+const promptFileInput = ref<HTMLInputElement>()
 const createLoading = ref(false)
+const featuredDetailVisible = ref(false)
+const selectedFeaturedApp = ref<API.AppVO>()
 
 const myApps = ref<API.AppVO[]>([])
 const myAppsLoading = ref(false)
@@ -252,6 +291,9 @@ const featuredAppParams = reactive<API.AppQueryRequest>({
 })
 
 const hasLogin = computed(() => Boolean(loginUserStore.loginUser.id))
+const selectedFeaturedEditable = computed(() =>
+  isSameId(selectedFeaturedApp.value?.userId, loginUserStore.loginUser.id),
+)
 
 const formatRelativeTime = (time?: string) => {
   if (!time) {
@@ -280,9 +322,33 @@ const handleOptimizePrompt = () => {
     : '帮我创建一个现代感强、层次清晰、兼顾移动端的企业官网，包含首页、服务介绍、案例展示和联系表单。'
 }
 
-const fillExamplePrompt = () => {
-  userPrompt.value =
-    '帮我创建一个高颜值的个人作品集网站，包含首页、项目展示、技能介绍、关于我和联系方式，整体清爽、现代、适合中文展示。'
+/** 打开隐藏文件选择器，让用户把文本需求或已有前端代码作为上下文导入。 */
+const openFilePicker = () => promptFileInput.value?.click()
+
+/**
+ * 读取用户选择的文本文件并追加到提示词；限制体积以避免误选大型二进制文件。
+ *
+ * @param event 文件输入框 change 事件
+ */
+const handlePromptFileChange = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  if (file.size > 1024 * 1024) {
+    message.warning('文件不能超过 1 MB')
+    input.value = ''
+    return
+  }
+  try {
+    const content = await file.text()
+    const prefix = userPrompt.value.trim() ? `${userPrompt.value.trim()}\n\n` : ''
+    userPrompt.value = `${prefix}参考文件 ${file.name}：\n${content}`
+    message.success(`已读取 ${file.name}`)
+  } catch {
+    message.error('文件读取失败，请选择文本文件')
+  } finally {
+    input.value = ''
+  }
 }
 
 const selectSuggestion = (value: string) => {
@@ -398,21 +464,32 @@ const handleViewFeatured = async (id?: string) => {
   try {
     const res = await getAppVoById({ id })
     if (res.data.code === 0 && res.data.data) {
-      const app = res.data.data
-      if (app.userId === loginUserStore.loginUser.id) {
-        router.push({
-          path: '/app/chat',
-          query: { id },
-        })
-      } else {
-        message.info('当前仅支持查看自己创建的应用')
-      }
+      selectedFeaturedApp.value = res.data.data
+      featuredDetailVisible.value = true
     } else {
       message.error('获取应用信息失败，' + res.data.message)
     }
   } catch (error) {
     message.error('获取应用信息失败')
   }
+}
+
+/** 打开当前精选应用的工作台，仅应用所有者会看到此操作。 */
+const openSelectedFeaturedWorkspace = () => {
+  const id = selectedFeaturedApp.value?.id
+  if (!id) return
+  featuredDetailVisible.value = false
+  void router.push({ path: '/app/chat', query: { id } })
+}
+
+/** 在新窗口访问当前精选应用已部署的公开页面。 */
+const visitSelectedFeaturedApp = () => {
+  const deployUrl = buildDeployAppUrl(selectedFeaturedApp.value?.deployKey)
+  if (!deployUrl) {
+    message.info('该应用暂未部署')
+    return
+  }
+  window.open(deployUrl, '_blank', 'noopener,noreferrer')
 }
 
 onMounted(() => {
@@ -425,8 +502,7 @@ onMounted(() => {
 
 <style scoped>
 #homePage {
-  --page-font:
-    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+  --page-font: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
   min-height: 100vh;
   font-family: var(--page-font);
   color: #111827;
@@ -441,6 +517,16 @@ onMounted(() => {
   position: relative;
   overflow: hidden;
   padding: 72px 24px 140px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
 }
 
 .hero-inner {
@@ -462,6 +548,7 @@ onMounted(() => {
   font-weight: 800;
   letter-spacing: 0.02em;
   color: #111827;
+  margin: 0;
 }
 
 .hero-logo {
@@ -875,94 +962,4 @@ onMounted(() => {
   background: radial-gradient(circle, rgba(76, 148, 255, 0.48) 0%, transparent 72%);
 }
 
-@media (max-width: 1200px) {
-  .showcase-panel {
-    padding: 36px 28px 30px;
-  }
-
-  .app-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 24px;
-  }
-}
-
-@media (max-width: 768px) {
-  .hero-section {
-    padding: 44px 16px 110px;
-  }
-
-  .hero-title {
-    gap: 14px;
-    font-size: 40px;
-  }
-
-  .hero-subtitle {
-    font-size: 18px;
-    margin-top: 18px;
-  }
-
-  .prompt-card {
-    margin-top: 36px;
-    padding: 18px 16px 16px;
-    border-radius: 26px;
-  }
-
-  .prompt-textarea :deep(.ant-input) {
-    min-height: 180px;
-    font-size: 18px;
-  }
-
-  .prompt-footer {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .prompt-tools {
-    width: 100%;
-  }
-
-  .ghost-pill {
-    flex: 1;
-  }
-
-  .submit-circle {
-    align-self: flex-end;
-  }
-
-  .example-pills {
-    gap: 12px;
-    margin-top: 20px;
-  }
-
-  .example-pill {
-    width: calc(50% - 6px);
-    padding: 12px 14px;
-    font-size: 14px;
-  }
-
-  .showcase-section {
-    padding: 0 16px 40px;
-  }
-
-  .showcase-panel {
-    padding: 28px 18px 24px;
-    border-radius: 30px;
-  }
-
-  .section-block + .section-block {
-    margin-top: 40px;
-  }
-
-  .section-header h2 {
-    font-size: 28px;
-  }
-
-  .app-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .card-title-row h3 {
-    font-size: 24px;
-  }
-}
 </style>

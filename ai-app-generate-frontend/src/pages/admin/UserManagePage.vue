@@ -1,7 +1,11 @@
 <template>
   <div id="userManagePage">
+    <header class="page-heading">
+      <div><h1>用户管理</h1><p>查看平台用户、角色和注册信息。</p></div>
+      <a-button @click="doSearch">刷新数据</a-button>
+    </header>
     <!-- 搜索表单 -->
-    <a-form layout="inline" :model="searchParams" @finish="doSearch">
+    <a-form class="filter-bar" layout="inline" :model="searchParams" @finish="doSearch">
       <a-form-item label="账号">
         <a-input v-model:value="searchParams.userAccount" placeholder="输入账号" />
       </a-form-item>
@@ -12,12 +16,13 @@
         <a-button type="primary" html-type="submit">搜索</a-button>
       </a-form-item>
     </a-form>
-    <a-divider />
     <!-- 表格 -->
     <!-- 当分页、排序、筛选发生变化时触发@change -->
     <a-table
       :columns="columns"
       :data-source="data"
+      :loading="loading"
+      row-key="id"
       :pagination="pagination"
       @change="doTableChange"
     >
@@ -37,7 +42,9 @@
           {{ dayjs(record.createTime).format('YYYY-MM-DD HH:mm:ss') }}
         </template>
         <template v-else-if="column.key === 'action'">
-          <a-button danger @click="doDelete(record.id)">删除</a-button>
+          <a-popconfirm title="确定删除这个用户吗？" @confirm="doDelete(record.id)">
+            <a-button danger>删除</a-button>
+          </a-popconfirm>
         </template>
       </template>
     </a-table>
@@ -87,6 +94,7 @@ const columns = [
 // 展示的数据
 const data = ref<API.UserVO[]>([])
 const total = ref(0)
+const loading = ref(false)
 
 // 搜索条件
 const searchParams = reactive<API.UserQueryRequest>({
@@ -96,14 +104,19 @@ const searchParams = reactive<API.UserQueryRequest>({
 
 // 获取数据
 const fetchData = async () => {
-  const res = await listUserVoByPage({
-    ...searchParams,
-  })
-  if (res.data.data) {
-    data.value = res.data.data.records ?? []
-    total.value = res.data.data.totalRow ?? 0
-  } else {
-    message.error('获取数据失败，' + res.data.message)
+  loading.value = true
+  try {
+    const res = await listUserVoByPage({ ...searchParams })
+    if (res.data.data) {
+      data.value = res.data.data.records ?? []
+      total.value = res.data.data.totalRow ?? 0
+    } else {
+      message.error('获取数据失败，' + res.data.message)
+    }
+  } catch {
+    message.error('获取用户数据失败')
+  } finally {
+    loading.value = false
   }
 }
 
@@ -155,8 +168,30 @@ onMounted(() => {
 
 <style scoped>
 #userManagePage {
-  padding: 24px;
-  background: white;
-  margin-top: 16px;
+  max-width: 1440px;
+  min-height: calc(100vh - 164px);
+  margin: 0 auto;
+  padding: 44px 32px 64px;
+  background: #fff;
 }
+
+.page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+
+.page-heading h1 { margin: 0; color: #111827; font-size: 32px; }
+.page-heading p { margin: 8px 0 0; color: #8a93a3; }
+
+.filter-bar {
+  margin-bottom: 24px;
+  padding: 20px;
+  border: 1px solid #edf0f3;
+  border-radius: 20px;
+  background: #fafafa;
+}
+
 </style>

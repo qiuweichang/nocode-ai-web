@@ -1,12 +1,22 @@
 import axios from 'axios'
 import { message } from 'ant-design-vue'
 import { apiBaseUrl } from '@/config/appConfig'
+import JSONBig from 'json-bigint'
+
+const JSONBigString = JSONBig({ storeAsString: true })
 
 // 创建 Axios 实例
 const myAxios = axios.create({
   baseURL: apiBaseUrl,
   timeout: 60000,
   withCredentials: true,
+  transformResponse: [(data) => {
+    try {
+      return JSONBigString.parse(data)
+    } catch {
+      return data
+    }
+  }],
 })
 
 // 全局请求拦截器

@@ -6,6 +6,7 @@ import UserManagePage from '../pages/admin/UserManagePage.vue'
 import AppManagePage from '../pages/admin/AppManagePage.vue'
 import AppChatPage from '../pages/app/AppChatPage.vue'
 import AppUpdatePage from '../pages/app/AppUpdatePage.vue'
+import ChatManagePage from '../pages/admin/ChatManagePage.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -36,9 +37,15 @@ const router = createRouter({
       component: AppManagePage,
     },
     {
+      path: '/admin/chatManage',
+      name: '对话管理',
+      component: ChatManagePage,
+    },
+    {
       path: '/app/chat',
       name: '应用生成',
       component: AppChatPage,
+      meta: { immersive: true },
     },
     {
       path: '/app/update',

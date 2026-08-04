@@ -20,9 +20,11 @@ import com.qwc.aiappgenerate.model.entity.User;
 import com.qwc.aiappgenerate.model.enums.CodeGenTypeEnum;
 import com.qwc.aiappgenerate.model.vo.AppVO;
 import com.qwc.aiappgenerate.service.AppService;
+import com.qwc.aiappgenerate.service.ProjectDownloadService;
 import com.qwc.aiappgenerate.service.UserService;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
@@ -30,6 +32,7 @@ import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.io.File;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +50,10 @@ public class AppController {
 
     @Resource
     private UserService userService;
+
+    /** 负责把生成目录过滤并打包为可下载的源码 ZIP。 */
+    @Resource
+    private ProjectDownloadService projectDownloadService;
 
     // region 用户接口
 
@@ -345,6 +352,32 @@ public class AppController {
         // 调用服务部署应用
         String deployUrl = appService.deployApp(appId, loginUser);
         return ResultUtils.success(deployUrl);
+    }
+
+    /**
+     * 下载当前用户拥有的应用源码，下载内容来自生成目录而不是部署目录。
+     *
+     * @param appId    应用 ID
+     * @param request  当前请求，用于获取登录用户
+     * @param response ZIP 文件输出响应
+     */
+    @GetMapping("/download/{appId}")
+    public void downloadAppCode(@PathVariable Long appId,
+                                HttpServletRequest request,
+                                HttpServletResponse response) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 无效");
+        App app = appService.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        User loginUser = userService.getLoginUser(request);
+        if (!app.getUserId().equals(loginUser.getId())) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限下载该应用源码");
+        }
+        String sourceDirName = app.getCodeGenType() + "_" + appId;
+        String sourceDirPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + sourceDirName;
+        File sourceDir = new File(sourceDirPath);
+        ThrowUtils.throwIf(!sourceDir.exists() || !sourceDir.isDirectory(),
+                ErrorCode.NOT_FOUND_ERROR, "应用代码不存在，请先生成代码");
+        projectDownloadService.downloadProjectAsZip(sourceDirPath, "app-" + appId, response);
     }
 
 }
