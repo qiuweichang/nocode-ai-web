@@ -15,11 +15,19 @@ import com.qwc.aiappgenerate.exception.BusinessException;
 import com.qwc.aiappgenerate.exception.ErrorCode;
 import com.qwc.aiappgenerate.exception.ThrowUtils;
 import com.qwc.aiappgenerate.model.dto.app.*;
+import com.qwc.aiappgenerate.model.dto.design.DesignConfirmRequest;
+import com.qwc.aiappgenerate.model.dto.design.DesignGenerateRequest;
+import com.qwc.aiappgenerate.model.dto.design.DesignReviseRequest;
 import com.qwc.aiappgenerate.model.entity.App;
 import com.qwc.aiappgenerate.model.entity.User;
 import com.qwc.aiappgenerate.model.enums.CodeGenTypeEnum;
 import com.qwc.aiappgenerate.model.vo.AppVO;
+import com.qwc.aiappgenerate.model.vo.DesignWorkflowVO;
+import com.qwc.aiappgenerate.model.vo.ProjectFileContentVO;
+import com.qwc.aiappgenerate.model.vo.ProjectFileVO;
 import com.qwc.aiappgenerate.service.AppService;
+import com.qwc.aiappgenerate.service.DesignWorkflowService;
+import com.qwc.aiappgenerate.service.ProjectFileService;
 import com.qwc.aiappgenerate.service.ProjectDownloadService;
 import com.qwc.aiappgenerate.service.UserService;
 import jakarta.annotation.Resource;
@@ -54,6 +62,14 @@ public class AppController {
     /** 负责把生成目录过滤并打包为可下载的源码 ZIP。 */
     @Resource
     private ProjectDownloadService projectDownloadService;
+
+    /** 负责生成项目目录的安全浏览、读取与在线保存。 */
+    @Resource
+    private ProjectFileService projectFileService;
+
+    /** 负责 Stitch 样式生成、局部修改、版本确认和设计产物落盘。 */
+    @Resource
+    private DesignWorkflowService designWorkflowService;
 
     // region 用户接口
 
@@ -135,6 +151,68 @@ public class AppController {
     }
 
     /**
+     * 获取当前应用的样式设计工作流状态。
+     *
+     * @param appId 应用 ID
+     * @param request 当前请求，用于校验登录用户和应用归属
+     * @return 设计阶段、当前版本和同源预览路径
+     */
+    @GetMapping("/design")
+    public BaseResponse<DesignWorkflowVO> getDesign(@RequestParam Long appId,
+                                                     HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        return ResultUtils.success(designWorkflowService.getDesign(appId, loginUser));
+    }
+
+    /**
+     * 调用 Stitch 生成应用首版桌面样式。
+     * 该接口是普通阻塞请求而不是 token 流，前端在等待期间展示不可编辑的设计加载画布。
+     *
+     * @param designRequest 首版设计请求
+     * @param request 当前请求
+     * @return 已落盘设计状态
+     */
+    @PostMapping("/design/generate")
+    public BaseResponse<DesignWorkflowVO> generateDesign(@RequestBody DesignGenerateRequest designRequest,
+                                                          HttpServletRequest request) {
+        ThrowUtils.throwIf(designRequest == null, ErrorCode.PARAMS_ERROR, "设计请求不能为空");
+        User loginUser = userService.getLoginUser(request);
+        return ResultUtils.success(designWorkflowService.generateInitialDesign(
+                designRequest.getAppId(), designRequest.getPrompt(), loginUser));
+    }
+
+    /**
+     * 调用 Stitch 修改当前样式；可携带 iframe 中选中的元素信息以限定修改范围。
+     *
+     * @param reviseRequest 样式修改请求
+     * @param request 当前请求
+     * @return 新版本设计状态
+     */
+    @PostMapping("/design/revise")
+    public BaseResponse<DesignWorkflowVO> reviseDesign(@RequestBody DesignReviseRequest reviseRequest,
+                                                        HttpServletRequest request) {
+        ThrowUtils.throwIf(reviseRequest == null, ErrorCode.PARAMS_ERROR, "修改请求不能为空");
+        User loginUser = userService.getLoginUser(request);
+        return ResultUtils.success(designWorkflowService.reviseDesign(reviseRequest, loginUser));
+    }
+
+    /**
+     * 确认用户当前看到的样式版本，确认成功后前端才会启动现有代码生成 SSE。
+     *
+     * @param confirmRequest 样式确认请求
+     * @param request 当前请求
+     * @return 确认后的设计状态
+     */
+    @PostMapping("/design/confirm")
+    public BaseResponse<DesignWorkflowVO> confirmDesign(@RequestBody DesignConfirmRequest confirmRequest,
+                                                         HttpServletRequest request) {
+        ThrowUtils.throwIf(confirmRequest == null, ErrorCode.PARAMS_ERROR, "确认请求不能为空");
+        User loginUser = userService.getLoginUser(request);
+        return ResultUtils.success(designWorkflowService.confirmDesign(
+                confirmRequest.getAppId(), confirmRequest.getRevisionNumber(), loginUser));
+    }
+
+    /**
      * 分页获取当前用户创建的应用列表
      *
      * @param appQueryRequest 查询请求
@@ -151,6 +229,9 @@ public class AppController {
         long pageNum = appQueryRequest.getPageNum();
         // 只查询当前用户的应用
         appQueryRequest.setUserId(loginUser.getId());
+        // 我的作品固定按真实更新时间倒序，避免客户端遗漏排序字段导致旧作品排在前面。
+        appQueryRequest.setSortField("updateTime");
+        appQueryRequest.setSortOrder("descend");
         QueryWrapper queryWrapper = appService.getQueryWrapper(appQueryRequest);
         Page<App> appPage = appService.page(Page.of(pageNum, pageSize), queryWrapper);
         // 数据封装
@@ -332,7 +413,39 @@ public class AppController {
                                 .event("done")
                                 .data("")
                                 .build()
-                ));
+                ))
+                .onErrorResume(error -> {
+                    String errorMessage = resolveGenerationErrorMessage(error);
+                    log.error("AI 生成或源码落盘失败，appId={}", appId, error);
+                    String errorData = JSONUtil.toJsonStr(Map.of(
+                            "error", "true",
+                            "message", errorMessage
+                    ));
+                    return Flux.just(ServerSentEvent.<String>builder()
+                            .event("business-error")
+                            .data(errorData)
+                            .build());
+                });
+    }
+
+    /**
+     * 把模型供应商异常转换为适合界面展示的业务提示。
+     * 工具消息链错误通常包含大段英文 JSON，直接展示既难以理解也会暴露底层协议细节。
+     *
+     * @param error 流式生成过程中抛出的异常
+     * @return 可直接发送给前端的简洁中文错误信息
+     */
+    private String resolveGenerationErrorMessage(Throwable error) {
+        if (error == null || StrUtil.isBlank(error.getMessage())) {
+            return "AI 输出未能写入项目文件";
+        }
+        String originalMessage = error.getMessage();
+        if (originalMessage.contains("tool_calls")
+                && (originalMessage.contains("tool_call_id")
+                || originalMessage.contains("insufficient tool messages"))) {
+            return "AI 工具调用未完整结束，本轮会话已隔离，请重新发送修改要求";
+        }
+        return originalMessage;
     }
 
     /**
@@ -378,6 +491,53 @@ public class AppController {
         ThrowUtils.throwIf(!sourceDir.exists() || !sourceDir.isDirectory(),
                 ErrorCode.NOT_FOUND_ERROR, "应用代码不存在，请先生成代码");
         projectDownloadService.downloadProjectAsZip(sourceDirPath, "app-" + appId, response);
+    }
+
+    /**
+     * 获取当前用户拥有应用的生成项目文件树。
+     *
+     * @param appId 应用 ID
+     * @param request 当前请求，用于获取登录用户
+     * @return 项目文件树
+     */
+    @GetMapping("/files")
+    public BaseResponse<List<ProjectFileVO>> listProjectFiles(@RequestParam Long appId,
+                                                               HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        return ResultUtils.success(projectFileService.listProjectFiles(appId, loginUser));
+    }
+
+    /**
+     * 读取当前用户拥有应用中的指定文本文件。
+     *
+     * @param appId 应用 ID
+     * @param path 文件相对路径
+     * @param request 当前请求，用于获取登录用户
+     * @return 文件文本及版本信息
+     */
+    @GetMapping("/file")
+    public BaseResponse<ProjectFileContentVO> readProjectFile(@RequestParam Long appId,
+                                                               @RequestParam String path,
+                                                               HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        return ResultUtils.success(projectFileService.readProjectFile(appId, path, loginUser));
+    }
+
+    /**
+     * 保存当前用户拥有应用中的指定文本文件。
+     *
+     * @param saveRequest 文件保存请求
+     * @param request 当前请求，用于获取登录用户
+     * @return 保存后的文件内容版本
+     */
+    @PostMapping("/file/save")
+    public BaseResponse<ProjectFileContentVO> saveProjectFile(@RequestBody AppFileSaveRequest saveRequest,
+                                                               HttpServletRequest request) {
+        ThrowUtils.throwIf(saveRequest == null, ErrorCode.PARAMS_ERROR, "保存请求不能为空");
+        User loginUser = userService.getLoginUser(request);
+        ProjectFileContentVO result = projectFileService.saveProjectFile(
+                saveRequest.getAppId(), saveRequest.getPath(), saveRequest.getContent(), loginUser);
+        return ResultUtils.success(result);
     }
 
 }

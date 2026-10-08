@@ -96,6 +96,8 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
             QueryWrapper queryWrapper = QueryWrapper.create()
                     .eq(ChatHistory::getAppId, appId)
                     .orderBy(ChatHistory::getCreateTime, false)
+                    // 同一秒内的问答必须继续按 ID 倒序，反转后才能恢复真实的一问一答顺序。
+                    .orderBy(ChatHistory::getId, false)
                     .limit(1, maxCount);
             List<ChatHistory> historyList = this.list(queryWrapper);
             if (CollUtil.isEmpty(historyList)) {
@@ -158,8 +160,9 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
         if (StrUtil.isNotBlank(sortField)) {
             queryWrapper.orderBy(sortField, "ascend".equals(sortOrder));
         } else {
-            // 默认按创建时间降序排列
-            queryWrapper.orderBy("createTime", false);
+            // createTime 精度相同时用雪花 ID 保证顺序稳定，避免前端出现连续用户消息。
+            queryWrapper.orderBy("createTime", false)
+                    .orderBy("id", false);
         }
         return queryWrapper;
     }

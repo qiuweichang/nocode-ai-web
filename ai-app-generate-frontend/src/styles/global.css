@@ -1,4 +1,7 @@
 :root {
+  /* 全站视觉比例固定为 75%；补偿后的视口高度用于保持全屏页面仍铺满浏览器。 */
+  --app-visual-scale: 0.75;
+  --app-viewport-height: 133.333333vh;
   color: #111827;
   background: #ffffff;
   font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
@@ -13,11 +16,12 @@
 html {
   min-width: 1180px;
   scroll-behavior: smooth;
+  zoom: var(--app-visual-scale);
 }
 
 body {
   min-width: 1180px;
-  min-height: 100vh;
+  min-height: var(--app-viewport-height);
   margin: 0;
   background: #ffffff;
 }
@@ -44,7 +48,7 @@ textarea:focus-visible {
 
 #app {
   min-width: 1180px;
-  min-height: 100vh;
+  min-height: var(--app-viewport-height);
 }
 
 .ant-btn,

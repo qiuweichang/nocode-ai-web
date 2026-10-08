@@ -148,7 +148,7 @@ onMounted(() => void fetchData())
 <style scoped>
 #chatManagePage {
   max-width: 1440px;
-  min-height: calc(100vh - 144px);
+  min-height: calc(var(--app-viewport-height) - 144px);
   margin: 0 auto;
   padding: 44px 32px 64px;
   background: #fff;

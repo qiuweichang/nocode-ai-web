@@ -169,7 +169,7 @@ onMounted(() => {
 <style scoped>
 #userManagePage {
   max-width: 1440px;
-  min-height: calc(100vh - 164px);
+  min-height: calc(var(--app-viewport-height) - 164px);
   margin: 0 auto;
   padding: 44px 32px 64px;
   background: #fff;

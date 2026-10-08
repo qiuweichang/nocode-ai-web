@@ -28,5 +28,5 @@ public interface AppConstant {
     /**
      * 应用部署域名
      */
-    String CODE_DEPLOY_HOST = "http://localhost:8123/api/deploy";
+    String CODE_DEPLOY_HOST = "http://localhost:8124/api/deploy";
 }

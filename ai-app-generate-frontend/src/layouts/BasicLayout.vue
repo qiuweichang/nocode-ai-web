@@ -1,7 +1,7 @@
 <template>
   <a-layout class="basic-layout">
     <!-- 顶部导航栏 -->
-    <GlobalHeader v-if="!immersive" />
+    <GlobalHeader v-if="!immersive || showGlobalHeader" />
     <!-- 主要内容区域 -->
     <a-layout-content class="main-content">
       <router-view />
@@ -21,6 +21,9 @@ const route = useRoute()
 
 /** 沉浸式工作台自行提供导航和操作区，不重复渲染全局头尾。 */
 const immersive = computed(() => Boolean(route.meta.immersive))
+
+/** 沉浸式工作台可单独要求保留全局导航，聊天页由此与首页保持一致的首屏入口。 */
+const showGlobalHeader = computed(() => Boolean(route.meta.showGlobalHeader))
 </script>
 
 <style scoped>

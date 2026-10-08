@@ -14,6 +14,56 @@ declare namespace API {
     appId?: string
   }
 
+  type AppFileSaveRequest = {
+    appId?: string
+    path?: string
+    content?: string
+  }
+
+  type DesignGenerateRequest = {
+    appId?: string
+    prompt?: string
+  }
+
+  type DesignReviseRequest = {
+    appId?: string
+    prompt?: string
+    baseRevisionNumber?: number
+    pagePath?: string
+    tagName?: string
+    selector?: string
+    elementId?: string
+    className?: string
+    textContent?: string
+  }
+
+  type DesignConfirmRequest = {
+    appId?: string
+    revisionNumber?: number
+  }
+
+  type DesignRevisionVO = {
+    number?: number
+    previewPath?: string
+    screenshotPath?: string
+    prompt?: string
+    confirmed?: boolean
+    createdAt?: string
+  }
+
+  type DesignWorkflowVO = {
+    appId?: string
+    stage?: 'EMPTY' | 'GENERATING' | 'REVIEW' | 'REVISING' | 'CONFIRMED' | 'FAILED'
+    stageText?: string
+    currentRevision?: number
+    confirmedRevision?: number
+    previewPath?: string
+    screenshotPath?: string
+    failureMessage?: string
+    confirmed?: boolean
+    revisions?: DesignRevisionVO[]
+  }
+
   type AppQueryRequest = {
     pageNum?: number
     pageSize?: number
@@ -46,6 +96,7 @@ declare namespace API {
     userId?: string
     createTime?: string
     updateTime?: string
+    hasGeneratedCode?: boolean
     user?: UserVO
   }
 
@@ -70,6 +121,41 @@ declare namespace API {
   type BaseResponseLong = {
     code?: number
     data?: string
+    message?: string
+  }
+
+  type ProjectFileVO = {
+    name?: string
+    path?: string
+    directory?: boolean
+    size?: number
+    editable?: boolean
+    modifiedTime?: number
+    children?: ProjectFileVO[]
+  }
+
+  type ProjectFileContentVO = {
+    path?: string
+    content?: string
+    size?: number
+    modifiedTime?: number
+  }
+
+  type BaseResponseProjectFileVOList = {
+    code?: number
+    data?: ProjectFileVO[]
+    message?: string
+  }
+
+  type BaseResponseProjectFileContentVO = {
+    code?: number
+    data?: ProjectFileContentVO
+    message?: string
+  }
+
+  type BaseResponseDesignWorkflowVO = {
+    code?: number
+    data?: DesignWorkflowVO
     message?: string
   }
 

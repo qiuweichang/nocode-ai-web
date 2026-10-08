@@ -1,5 +1,5 @@
 server:
-  port: 8123
+  port: 8124
   servlet:
     context-path: /api
 spring:
@@ -7,6 +7,11 @@ spring:
     active: local
   application:
     name: ai-app-generate
+  ai:
+    openai:
+      base-url: https://api.deepseek.com
+      chat:
+        model: deepseek-chat
   # mysql
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -18,7 +23,15 @@ spring:
       host: 192.168.96.136
       port: 32539
       database: 1
-      password: bywin@666
+    password: bywin@666
+
+# 切换 HTML 大模型普通调用实现：langchain4j、spring-ai 或 agentscope。
+# AgentScope 复用 langchain4j.open-ai.chat-model 中已有的兼容接口地址和密钥。
+ai:
+  provider:
+    type: langchain4j
+    base-url: https://api.deepseek.com
+    model: deepseek-chat
 
 # springdoc-openapi
 springdoc:
@@ -30,4 +43,12 @@ knife4j:
   enable: true
   setting:
     language: zh_cn
+
+# Google Stitch 设计阶段配置。密钥只从环境变量读取，避免提交到代码仓库。
+stitch:
+  endpoint: https://stitch.googleapis.com/mcp
+  api-key: ""
+  timeout-seconds: 300
+  # 仅供本地浏览器验收使用；正式环境必须保持 false 并配置真实 STITCH_API_KEY。
+  mock-enabled: false
 

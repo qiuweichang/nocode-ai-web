@@ -69,10 +69,15 @@ public class AppVO implements Serializable {
     private LocalDateTime updateTime;
 
     /**
+     * 是否已经存在可预览的生成代码。
+     * 首页据此决定展示真实页面缩略预览还是空项目占位图，避免 iframe 请求不存在的目录。
+     */
+    private Boolean hasGeneratedCode;
+
+    /**
      * 创建用户信息
      */
     private UserVO user;
 
     private static final long serialVersionUID = 1L;
 }
-

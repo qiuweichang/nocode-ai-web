@@ -81,13 +81,30 @@
               class="showcase-card"
               @click="handleGoToChat(item.id)"
             >
-              <div class="card-preview" :class="`variant-${index % 3}`">
+              <div
+                class="card-preview"
+                :class="`variant-${index % 3}`"
+                title="页面缩略预览，请使用下方“继续”按钮进入编辑"
+                @click.stop
+              >
                 <img
                   v-if="item.cover"
                   :src="item.cover"
                   :alt="item.appName"
                   class="preview-image"
                 />
+                <div v-else-if="item.hasGeneratedCode" class="site-preview-shell">
+                  <iframe
+                    :src="buildAppCardPreviewUrl(item)"
+                    :title="`${item.appName || '未命名应用'}页面预览`"
+                    class="site-preview-frame"
+                    loading="lazy"
+                    sandbox="allow-scripts"
+                    tabindex="-1"
+                    aria-hidden="true"
+                  ></iframe>
+                  <span class="site-preview-label">页面预览</span>
+                </div>
                 <div v-else class="preview-fallback">
                   <div class="fallback-window">
                     <div class="window-bar">
@@ -117,7 +134,7 @@
                   <h3>{{ item.appName }}</h3>
                   <a-tag color="purple">用户应用</a-tag>
                 </div>
-                <p class="card-meta">创建于 {{ formatRelativeTime(item.createTime) }}</p>
+                <p class="card-meta">更新于 {{ formatRelativeTime(item.updateTime || item.createTime) }}</p>
                 <div class="card-actions" @click.stop>
                   <a-button type="text" @click="handleGoToChat(item.id)">
                     继续
@@ -257,7 +274,7 @@ import { useLoginUserStore } from '@/stores/loginUser'
 import logo from '@/assets/logo.png'
 import dayjs from 'dayjs'
 import { isSameId } from '@/utils/id'
-import { buildDeployAppUrl } from '@/config/appConfig'
+import { buildDeployAppUrl, buildPreviewAppUrl } from '@/config/appConfig'
 import AppDetailModal from '@/components/AppDetailModal.vue'
 
 const router = useRouter()
@@ -280,6 +297,8 @@ const myAppsTotal = ref(0)
 const myAppParams = reactive<API.AppQueryRequest>({
   pageNum: 1,
   pageSize: 6,
+  sortField: 'updateTime',
+  sortOrder: 'descend',
 })
 
 const featuredApps = ref<API.AppVO[]>([])
@@ -318,8 +337,20 @@ const formatRelativeTime = (time?: string) => {
 
 const handleOptimizePrompt = () => {
   userPrompt.value = userPrompt.value.trim()
-    ? `${userPrompt.value.trim()}，请补充更清晰的页面结构、核心功能、目标用户和视觉风格，并兼顾移动端适配。`
-    : '帮我创建一个现代感强、层次清晰、兼顾移动端的企业官网，包含首页、服务介绍、案例展示和联系表单。'
+    ? `${userPrompt.value.trim()}，请补充更清晰的页面结构、核心功能、目标用户和视觉风格，使用完整的桌面端布局。`
+    : '帮我创建一个现代感强、层次清晰的桌面端企业官网，包含首页、服务介绍、案例展示和联系表单。'
+}
+
+/**
+ * 构建作品卡片中的同源静态页面地址。
+ * 预览 iframe 仅在后端确认生成目录存在时渲染，避免空项目显示浏览器 404 页面。
+ *
+ * @param app 当前作品数据
+ * @returns 可用于 iframe 的页面预览地址
+ */
+const buildAppCardPreviewUrl = (app: API.AppVO) => {
+  if (!app.id || !app.codeGenType) return ''
+  return buildPreviewAppUrl(`/api/static/${app.codeGenType}_${app.id}/index.html`)
 }
 
 /** 打开隐藏文件选择器，让用户把文本需求或已有前端代码作为上下文导入。 */
@@ -503,7 +534,7 @@ onMounted(() => {
 <style scoped>
 #homePage {
   --page-font: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
-  min-height: 100vh;
+  min-height: var(--app-viewport-height);
   font-family: var(--page-font);
   color: #111827;
   background:
@@ -532,7 +563,7 @@ onMounted(() => {
 .hero-inner {
   position: relative;
   z-index: 1;
-  max-width: 1180px;
+  max-width: 1480px;
   margin: 0 auto;
   text-align: center;
 }
@@ -678,7 +709,7 @@ onMounted(() => {
 }
 
 .showcase-panel {
-  max-width: 1380px;
+  max-width: 1800px;
   margin: 0 auto;
   padding: 44px 48px 36px;
   border-radius: 40px;
@@ -724,6 +755,7 @@ onMounted(() => {
   border: 1px solid #edf1f6;
   background: #f8fafc;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
+  cursor: default;
 }
 
 .preview-image {
@@ -731,6 +763,42 @@ onMounted(() => {
   height: 100%;
   display: block;
   object-fit: cover;
+}
+
+.site-preview-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #eef2f7;
+  cursor: default;
+}
+
+.site-preview-frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1200px;
+  height: 760px;
+  border: 0;
+  background: #fff;
+  pointer-events: none;
+  transform: scale(0.34);
+  transform-origin: left top;
+}
+
+.site-preview-label {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  padding: 5px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  border-radius: 9px;
+  background: rgba(17, 24, 39, 0.72);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  backdrop-filter: blur(8px);
 }
 
 .preview-fallback {

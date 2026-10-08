@@ -25,6 +25,7 @@ import com.qwc.aiappgenerate.model.vo.AppVO;
 import com.qwc.aiappgenerate.model.vo.UserVO;
 import com.qwc.aiappgenerate.service.AppService;
 import com.qwc.aiappgenerate.service.ChatHistoryService;
+import com.qwc.aiappgenerate.service.DesignWorkflowService;
 import com.qwc.aiappgenerate.service.UserService;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
@@ -34,6 +35,10 @@ import reactor.core.publisher.Flux;
 
 import java.io.File;
 import java.io.Serializable;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -48,6 +53,12 @@ import java.util.stream.Collectors;
 @Slf4j
 public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppService {
 
+    /**
+     * 发送给模型的现有源码最大字符数。
+     * 多轮修改必须携带磁盘上的真实版本，但需要限制长度，避免异常大文件挤占模型上下文。
+     */
+    private static final int MAX_EXISTING_SOURCE_CHARS = 160_000;
+
     @Resource
     private UserService userService;
 
@@ -59,6 +70,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private StreamHandlerExecutor streamHandlerExecutor;
+
+    /** 为首轮代码生成提供设计确认门禁和已确认 Stitch HTML 上下文。 */
+    @Resource
+    private DesignWorkflowService designWorkflowService;
 
     @Override
     public void validApp(App app, boolean add) {
@@ -120,6 +135,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             UserVO userVO = userService.getUserVO(user);
             appVO.setUser(userVO);
         }
+        fillGeneratedCodeState(app, appVO);
         return appVO;
     }
 
@@ -138,6 +154,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             AppVO appVO = new AppVO();
             BeanUtil.copyProperties(app, appVO);
             appVO.setUser(userVOMap.get(app.getUserId()));
+            fillGeneratedCodeState(app, appVO);
             return appVO;
         }).collect(Collectors.toList());
     }
@@ -164,12 +181,109 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "不支持的代码生成类型");
         }
-        // 5. 通过校验后，添加用户消息到对话历史
+        Path projectRoot = Paths.get(AppConstant.CODE_OUTPUT_ROOT_DIR,
+                codeGenTypeEnum.getValue() + "_" + appId).toAbsolutePath().normalize();
+        boolean hasExistingCode = Files.isDirectory(projectRoot)
+                && Files.isRegularFile(projectRoot.resolve("index.html"));
+        if (!hasExistingCode && !designWorkflowService.isDesignConfirmed(appId)) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "请先确认样式方案，再开始生成代码");
+        }
+        // 5. 先创建 AI 服务和代码流。缓存首次加载历史时还没有本轮消息，避免同一需求以原文和增强版重复进入模型上下文。
+        String generationMessage = buildGenerationMessage(message, codeGenTypeEnum, appId);
+        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(
+                generationMessage, codeGenTypeEnum, appId);
+        // 6. 对话流创建成功后再持久化用户看到的原始消息，历史记录不包含冗长源码上下文。
         chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(), loginUser.getId());
-        // 6. 调用 AI 生成代码（流式）
-        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
         // 7. 收集 AI 响应内容并在完成后记录到对话历史
-        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
+        return streamHandlerExecutor
+                .doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum)
+                .doOnComplete(() -> touchAppUpdatedTime(appId));
+    }
+
+    /**
+     * 为多轮修改补充磁盘上的当前源码，确保模型基于真实文件而不是仅凭历史回复进行修改。
+     * 首轮生成或 Vue 工具模式没有传统静态文件时，保持用户消息原样。
+     *
+     * @param userMessage 用户原始修改要求
+     * @param codeGenType 代码生成模式
+     * @param appId 应用 ID
+     * @return 可直接发送给模型的完整生成指令
+     */
+    private String buildGenerationMessage(String userMessage, CodeGenTypeEnum codeGenType, Long appId) {
+        Path projectRoot = Paths.get(AppConstant.CODE_OUTPUT_ROOT_DIR,
+                codeGenType.getValue() + "_" + appId).toAbsolutePath().normalize();
+        if (!Files.isDirectory(projectRoot) || !Files.isRegularFile(projectRoot.resolve("index.html"))) {
+            return designWorkflowService.buildConfirmedDesignContext(appId, userMessage);
+        }
+        if (codeGenType == CodeGenTypeEnum.VUE_PROJECT) {
+            return userMessage;
+        }
+        List<String> sourceFiles = codeGenType == CodeGenTypeEnum.HTML
+                ? List.of("index.html")
+                : List.of("index.html", "style.css", "script.js");
+        StringBuilder sourceContext = new StringBuilder(userMessage)
+                .append("\n\n以下是项目磁盘上当前生效的完整源码。请以这些文件为唯一修改基线，")
+                .append(codeGenType == CodeGenTypeEnum.MULTI_FILE
+                        ? "严格落实本轮要求，只调用 writeFile 覆盖实际发生变化的文件，content 必须是该文件修改后的完整内容；不要只描述已修改：\n"
+                        : "严格落实本轮要求，并输出修改后的完整文件；不要只描述已修改：\n");
+        int appendedChars = 0;
+        for (String fileName : sourceFiles) {
+            Path sourcePath = projectRoot.resolve(fileName).normalize();
+            if (!sourcePath.startsWith(projectRoot) || !Files.isRegularFile(sourcePath)) {
+                continue;
+            }
+            try {
+                String content = Files.readString(sourcePath, StandardCharsets.UTF_8);
+                int remainingChars = MAX_EXISTING_SOURCE_CHARS - appendedChars;
+                if (remainingChars <= 0) {
+                    break;
+                }
+                String boundedContent = content.length() > remainingChars
+                        ? content.substring(0, remainingChars)
+                        : content;
+                sourceContext.append("\n--- ").append(fileName).append(" ---\n")
+                        .append(boundedContent).append('\n');
+                appendedChars += boundedContent.length();
+            } catch (Exception e) {
+                log.error("读取现有源码作为 AI 修改上下文失败，appId={}, file={}", appId, fileName, e);
+            }
+        }
+        return appendedChars > 0 ? sourceContext.toString() : userMessage;
+    }
+
+    /**
+     * 标记应用最近一次实际代码生成完成的时间，使“我的作品”能够按真实更新时间排序。
+     *
+     * @param appId 已完成代码落盘的应用 ID
+     */
+    private void touchAppUpdatedTime(Long appId) {
+        App updateApp = new App();
+        updateApp.setId(appId);
+        updateApp.setUpdateTime(LocalDateTime.now());
+        if (!this.updateById(updateApp)) {
+            log.error("更新应用生成时间失败，appId={}", appId);
+            return;
+        }
+        log.info("应用生成时间已更新，appId={}", appId);
+    }
+
+    /**
+     * 检查应用的生成目录是否存在并写入视图对象，供作品卡片安全加载页面缩略预览。
+     *
+     * @param app 应用实体
+     * @param appVO 待补充状态的应用视图对象
+     */
+    private void fillGeneratedCodeState(App app, AppVO appVO) {
+        if (app == null || appVO == null || app.getId() == null || StrUtil.isBlank(app.getCodeGenType())) {
+            if (appVO != null) {
+                appVO.setHasGeneratedCode(false);
+            }
+            return;
+        }
+        Path projectRoot = Paths.get(AppConstant.CODE_OUTPUT_ROOT_DIR,
+                app.getCodeGenType() + "_" + app.getId()).toAbsolutePath().normalize();
+        appVO.setHasGeneratedCode(Files.isDirectory(projectRoot)
+                && Files.isRegularFile(projectRoot.resolve("index.html")));
     }
 
 

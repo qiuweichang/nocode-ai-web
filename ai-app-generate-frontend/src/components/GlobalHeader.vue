@@ -24,8 +24,8 @@
     <div class="account-area">
       <a-dropdown v-if="loginUserStore.loginUser.id" placement="bottomRight">
         <button class="account-button">
-          <a-avatar :size="32" :src="loginUserStore.loginUser.userAvatar">
-            {{ (loginUserStore.loginUser.userName || '用').slice(0, 1) }}
+          <a-avatar :size="32" class="default-account-avatar">
+            <UserOutlined />
           </a-avatar>
           <span>{{ loginUserStore.loginUser.userName || '用户' }}</span>
           <DownOutlined />
@@ -48,7 +48,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message, type MenuProps } from 'ant-design-vue'
-import { DownOutlined, LogoutOutlined } from '@ant-design/icons-vue'
+import { DownOutlined, LogoutOutlined, UserOutlined } from '@ant-design/icons-vue'
 import { useLoginUserStore } from '@/stores/loginUser'
 import { userLogout } from '@/api/userController'
 import logo from '@/assets/logo.png'
@@ -108,8 +108,8 @@ const doLogout = async () => {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  min-height: 72px;
-  padding: 0 28px;
+  min-height: 58px;
+  padding: 0 18px;
   border-bottom: 1px solid rgba(17, 24, 39, 0.08);
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(18px);
@@ -119,24 +119,24 @@ const doLogout = async () => {
   display: inline-flex;
   width: fit-content;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   color: #111827;
-  font-size: 22px;
+  font-size: 19px;
   font-weight: 800;
   letter-spacing: -0.02em;
 }
 
 .brand-logo {
-  width: 38px;
-  height: 38px;
-  border-radius: 13px;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
   object-fit: cover;
 }
 
 .main-nav {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
 .main-nav button,
@@ -149,9 +149,9 @@ const doLogout = async () => {
 }
 
 .main-nav button {
-  padding: 10px 15px;
-  border-radius: 12px;
-  font-size: 14px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 13px;
   transition: color 0.2s ease, background 0.2s ease;
 }
 
@@ -180,6 +180,13 @@ const doLogout = async () => {
 
 .account-button:hover {
   background: #f5f6f7;
+}
+
+/* 所有账号统一使用灰色人物轮廓，确保导航栏视觉一致且不受历史头像数据影响。 */
+.default-account-avatar {
+  border: 1px solid #d7dbe1;
+  background: #e5e7eb;
+  color: #6b7280;
 }
 
 .login-button {

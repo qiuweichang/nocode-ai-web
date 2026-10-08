@@ -20,7 +20,9 @@ import org.springframework.context.annotation.Configuration;
 import java.time.Duration;
 
 /**
- *
+ * AI 代码生成服务工厂。
+ * HTML 与 Vue 会话按应用缓存并使用持久化聊天记忆；多文件工具会话每轮独立创建，
+ * 避免上一轮未闭合的 tool_calls 污染下一轮文件修改请求。
  *
  * @author qiuwc
  * @since 2026/2/4 15:58
@@ -52,7 +54,7 @@ public class AiCodeGeneratorServiceFactory {
             .expireAfterWrite(Duration.ofMinutes(30))
             .expireAfterAccess(Duration.ofMinutes(10))
             .removalListener((key, value, cause) -> {
-                log.debug("AI 服务实例被移除，缓存键: {}, 原因: {}", key, cause);
+                log.info("AI 服务实例被移除，缓存键: {}, 原因: {}", key, cause);
             })
             .build();
 
@@ -64,11 +66,41 @@ public class AiCodeGeneratorServiceFactory {
     }
 
     /**
-     * 根据 appId 和代码生成类型获取服务（带缓存）
+     * 根据应用和生成类型获取 AI 服务。
+     * 多文件模式的请求已经携带磁盘完整源码，因此每轮使用隔离内存；其他模式继续复用缓存服务。
+     *
+     * @param appId 应用 ID，同时用于文件工具定位项目目录
+     * @param codeGenType 代码生成类型
+     * @return 可执行当前代码生成请求的 AI 服务
      */
     public AiCodeGeneratorService getAiCodeGeneratorService(long appId, CodeGenTypeEnum codeGenType) {
+        if (codeGenType == CodeGenTypeEnum.MULTI_FILE) {
+            return createIsolatedMultiFileService();
+        }
         String cacheKey = buildCacheKey(appId, codeGenType);
         return serviceCache.get(cacheKey, key -> createAiCodeGeneratorService(appId, codeGenType));
+    }
+
+    /**
+     * 创建单轮隔离的多文件工具服务。
+     * 这里不挂接 Redis，也不加载历史工具消息；模型修改所需上下文由 AppServiceImpl 从磁盘实时提供。
+     * 同一轮内部仍使用 MessageWindowChatMemory，以保证 writeFile 执行结果能够正确跟随 tool_calls
+     * 参与模型的后续总结请求。
+     *
+     * @return 仅服务一次多文件生成或修改请求的 AI 服务
+     */
+    private AiCodeGeneratorService createIsolatedMultiFileService() {
+        MessageWindowChatMemory isolatedMemory = MessageWindowChatMemory.builder()
+                .maxMessages(20)
+                .build();
+        return AiServices.builder(AiCodeGeneratorService.class)
+                .streamingChatModel(reasoningStreamingChatModel)
+                .chatMemoryProvider(memoryId -> isolatedMemory)
+                .tools(new FileWriteTool(CodeGenTypeEnum.MULTI_FILE))
+                .hallucinatedToolNameStrategy(toolExecutionRequest -> ToolExecutionResultMessage.from(
+                        toolExecutionRequest, "Error: there is no tool called " + toolExecutionRequest.name()
+                ))
+                .build();
     }
 
     /**
@@ -93,17 +125,18 @@ public class AiCodeGeneratorServiceFactory {
         chatHistoryService.loadChatHistoryToMemory(appId, chatMemory, 20);
         // 根据代码生成类型选择不同的模型配置
         return switch (codeGenType) {
-            // Vue 项目生成使用推理模型
+            // Vue 项目保留持久化工具会话；多文件模式已在入口处使用单轮隔离服务。
             case VUE_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
                     .streamingChatModel(reasoningStreamingChatModel)
                     .chatMemoryProvider(memoryId -> chatMemory)
-                    .tools(new FileWriteTool())
+                    .tools(new FileWriteTool(codeGenType))
                     .hallucinatedToolNameStrategy(toolExecutionRequest -> ToolExecutionResultMessage.from(
                             toolExecutionRequest, "Error: there is no tool called " + toolExecutionRequest.name()
                     ))
                     .build();
-            // HTML 和多文件生成使用默认模型
-            case HTML, MULTI_FILE -> AiServices.builder(AiCodeGeneratorService.class)
+            case MULTI_FILE -> throw new IllegalStateException("多文件服务必须通过单轮隔离入口创建");
+            // 单 HTML 生成保留传统文本解析模式。
+            case HTML -> AiServices.builder(AiCodeGeneratorService.class)
                     .chatModel(chatModel)
                     .streamingChatModel(openAiStreamingChatModel)
                     .chatMemory(chatMemory)

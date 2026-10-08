@@ -86,6 +86,56 @@ export async function chatToGenCode(
   })
 }
 
+/** 获取当前应用的 Stitch 样式设计状态 GET /app/design */
+export async function getAppDesign(appId: string, options?: { [key: string]: any }) {
+  return request<API.BaseResponseDesignWorkflowVO>('/app/design', {
+    method: 'GET',
+    params: { appId },
+    ...(options || {}),
+  })
+}
+
+/** 生成首版 Stitch 桌面样式 POST /app/design/generate */
+export async function generateAppDesign(
+  body: API.DesignGenerateRequest,
+  options?: { [key: string]: any },
+) {
+  return request<API.BaseResponseDesignWorkflowVO>('/app/design/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    data: body,
+    timeout: 360000,
+    ...(options || {}),
+  })
+}
+
+/** 基于当前版本和可选元素上下文修改 Stitch 样式 POST /app/design/revise */
+export async function reviseAppDesign(
+  body: API.DesignReviseRequest,
+  options?: { [key: string]: any },
+) {
+  return request<API.BaseResponseDesignWorkflowVO>('/app/design/revise', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    data: body,
+    timeout: 360000,
+    ...(options || {}),
+  })
+}
+
+/** 确认当前 Stitch 样式版本 POST /app/design/confirm */
+export async function confirmAppDesign(
+  body: API.DesignConfirmRequest,
+  options?: { [key: string]: any },
+) {
+  return request<API.BaseResponseDesignWorkflowVO>('/app/design/confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    data: body,
+    ...(options || {}),
+  })
+}
+
 /** 此处后端没有提供注释 POST /app/delete */
 export async function deleteApp(body: API.DeleteRequest, options?: { [key: string]: any }) {
   return request<API.BaseResponseBoolean>('/app/delete', {
@@ -115,6 +165,41 @@ export async function downloadAppCode(appId: string, options?: { [key: string]: 
   return request<Blob>(`/app/download/${appId}`, {
     method: 'GET',
     responseType: 'blob',
+    ...(options || {}),
+  })
+}
+
+/** 获取当前用户拥有应用的完整生成项目文件树 GET /app/files */
+export async function listProjectFiles(appId: string, options?: { [key: string]: any }) {
+  return request<API.BaseResponseProjectFileVOList>('/app/files', {
+    method: 'GET',
+    params: { appId },
+    ...(options || {}),
+  })
+}
+
+/** 读取当前用户拥有应用中的指定文本文件 GET /app/file */
+export async function readProjectFile(
+  appId: string,
+  path: string,
+  options?: { [key: string]: any },
+) {
+  return request<API.BaseResponseProjectFileContentVO>('/app/file', {
+    method: 'GET',
+    params: { appId, path },
+    ...(options || {}),
+  })
+}
+
+/** 保存当前用户拥有应用中的指定文本文件 POST /app/file/save */
+export async function saveProjectFile(
+  body: API.AppFileSaveRequest,
+  options?: { [key: string]: any },
+) {
+  return request<API.BaseResponseProjectFileContentVO>('/app/file/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    data: body,
     ...(options || {}),
   })
 }

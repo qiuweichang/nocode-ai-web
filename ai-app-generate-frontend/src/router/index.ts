@@ -45,7 +45,7 @@ const router = createRouter({
       path: '/app/chat',
       name: '应用生成',
       component: AppChatPage,
-      meta: { immersive: true },
+      meta: { immersive: true, showGlobalHeader: true },
     },
     {
       path: '/app/update',

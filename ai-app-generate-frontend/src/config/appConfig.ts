@@ -1,6 +1,8 @@
-const DEFAULT_API_BASE_URL = 'http://localhost:8123/api'
-const DEFAULT_APP_PREVIEW_BASE_URL = 'http://localhost:8123'
-const DEFAULT_APP_DEPLOY_BASE_URL = 'http://localhost:8123'
+const DEFAULT_API_BASE_URL = 'http://localhost:8124/api'
+// 预览默认走当前站点同源路径，确保工作台能够安全注入页面元素选择器。
+// 开发环境由 Vite 把 /api/static 代理到后端，生产环境由统一网关提供同源静态访问。
+const DEFAULT_APP_PREVIEW_BASE_URL = window.location.origin
+const DEFAULT_APP_DEPLOY_BASE_URL = 'http://localhost:8124'
 
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '')
 

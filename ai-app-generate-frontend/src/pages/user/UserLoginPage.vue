@@ -76,7 +76,7 @@ const handleSubmit = async (values: API.UserLoginRequest) => {
 <style scoped>
 .auth-page {
   display: grid;
-  min-height: calc(100vh - 164px);
+  min-height: calc(var(--app-viewport-height) - 164px);
   grid-template-columns: minmax(0, 1.08fr) minmax(420px, 0.92fr);
   gap: 72px;
   align-items: center;
